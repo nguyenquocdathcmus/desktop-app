@@ -1,8 +1,14 @@
 import { useProjectStore } from '../../../store/useProjectStore'
+import { useEntitlementsStore } from '../../../store/useEntitlementsStore'
+import { ProLockedPanel } from './ProLockedPanel'
 
 export function ZoomPanel() {
   const { project, autoZoomEnabled, setAutoZoomEnabled, regenerateZoom, addZoomEvent, removeZoomEvent, updateZoomEvent } = useProjectStore()
+  const zoomAllowed = useEntitlementsStore((s) => s.limits.zoomAllowed)
   if (!project) return null
+  if (!zoomAllowed) {
+    return <ProLockedPanel title="Zoom & Pan" description="Auto zoom theo con trỏ và hiệu ứng zoom/pan là tính năng Pro." />
+  }
 
   const { zoomEvents } = project
 

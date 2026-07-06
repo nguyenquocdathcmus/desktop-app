@@ -5,6 +5,7 @@ import { usePlaybackStore } from './store/usePlaybackStore'
 import { useLocaleStore } from './store/useLocaleStore'
 import { useThemeStore } from './store/useThemeStore'
 import { useAuthStore } from './store/useAuthStore'
+import { useEntitlementsStore } from './store/useEntitlementsStore'
 import { RTL_LOCALES } from '../../shared/locales'
 import { Editor } from './components/Editor/Editor'
 import { RecordingControls } from './components/Recording/RecordingControls'
@@ -38,6 +39,7 @@ export default function App() {
   const { locale, initLocale } = useLocaleStore()
   const { preference: theme, initTheme } = useThemeStore()
   const { initAuth } = useAuthStore()
+  const refreshEntitlements = useEntitlementsStore((s) => s.refresh)
 
   // Sprint 27 US-206/207/208 — resolve the persisted/OS-detected locale once
   // at boot, then keep <html dir> in sync for the one RTL locale (Arabic).
@@ -49,6 +51,11 @@ export default function App() {
     // Sprint 28 — only the editor window has a Settings panel that reads
     // auth state; controls/webcam windows don't need this subscription.
     if (view === 'editor') initAuth()
+    // Sprint 30 follow-up — plan/limits for drawing Pro locks; refetched on
+    // every auth change (sign-in/out swaps the whole plan).
+    refreshEntitlements()
+    const unsubscribe = window.api.onAuthStatusChanged(() => refreshEntitlements())
+    return unsubscribe
   }, [])
 
   useEffect(() => {

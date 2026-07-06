@@ -19,6 +19,18 @@ export function registerExportHandlers(ipcMain: IpcMain): void {
       return { ok: false, error: 'Xuất trên 720p là tính năng Pro — nâng cấp trong panel Tài khoản để mở khóa đến 4K 60fps.' }
     }
 
+    // Sprint 30 follow-up — Pro editor effects never reach ffmpeg on Free,
+    // even if a tampered renderer smuggles them into the payload. Stripped
+    // (not rejected) so a Free export still succeeds as a plain video. The
+    // basic synthetic cursor path is kept — cursor-hidden recordings would
+    // otherwise export with no cursor at all — but its Pro effects
+    // (highlight, size scaling) are reset.
+    if (!ent.limits.zoomAllowed) opts = { ...opts, zoomEvents: undefined }
+    if (!ent.limits.annotationsAllowed) opts = { ...opts, annotations: undefined }
+    if (!ent.limits.chaptersAllowed) opts = { ...opts, chapters: undefined }
+    if (!ent.limits.blurAllowed) opts = { ...opts, blurRegions: undefined }
+    if (!ent.limits.cursorFxAllowed) opts = { ...opts, cursorHighlight: undefined, cursorScale: 1 }
+
     exporting = true
 
     const broadcast = (channel: string, payload: unknown) => {

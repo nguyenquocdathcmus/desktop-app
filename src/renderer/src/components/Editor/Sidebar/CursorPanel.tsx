@@ -1,10 +1,16 @@
 import { useProjectStore } from '../../../store/useProjectStore'
+import { useEntitlementsStore } from '../../../store/useEntitlementsStore'
+import { ProLockedPanel } from './ProLockedPanel'
 
 const HIGHLIGHT_COLORS = ['#FFD700', '#FF4444', '#44FF88', '#4488FF', '#FF44FF', '#FFFFFF']
 
 export function CursorPanel() {
   const { project, setCursorSettings } = useProjectStore()
+  const cursorFxAllowed = useEntitlementsStore((s) => s.limits.cursorFxAllowed)
   if (!project) return null
+  if (!cursorFxAllowed) {
+    return <ProLockedPanel title="Cursor" description="Hiệu ứng con trỏ (highlight, click animation, làm mượt, kích thước) là tính năng Pro." />
+  }
 
   const cs = project.cursorSettings
 

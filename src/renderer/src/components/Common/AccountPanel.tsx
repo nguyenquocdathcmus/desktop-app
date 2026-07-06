@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useAccountPanelStore } from '../../store/useAccountPanelStore'
+import { useEntitlementsStore } from '../../store/useEntitlementsStore'
 import type { SubscriptionInfo } from '../../../../main/ipc/billing-handlers'
 
 /** Sprint 28 follow-up — Profile/Account is its own toolbar button + dialog,
@@ -70,7 +71,11 @@ export function AccountPanel() {
         attempts++
         const sub = await window.api.getSubscriptionStatus().catch(() => null)
         const isPro = !!sub && sub.signedIn && 'plan' in sub && sub.plan === 'pro'
-        if (isPro && sub) setSubscription(sub)
+        if (isPro && sub) {
+          setSubscription(sub)
+          // Unlock Pro features across the editor without a restart.
+          useEntitlementsStore.getState().refresh()
+        }
         if ((isPro || attempts >= 36) && upgradePollRef.current) {
           clearInterval(upgradePollRef.current)
           upgradePollRef.current = null

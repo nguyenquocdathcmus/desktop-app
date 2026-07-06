@@ -24,6 +24,18 @@ export interface EntitlementLimits {
   audioAllowed: boolean
   webcamAllowed: boolean
   transcriptAllowed: boolean
+  /** Sprint 30 follow-up — editor effects moved to Pro: auto/manual zoom
+   *  events, cursor animation effects (smoothing/highlight/size — the basic
+   *  synthetic cursor itself always renders so cursor-hidden recordings
+   *  aren't left cursorless), text annotations, chapters, review notes and
+   *  blur regions. Store actions no-op with an upsell toast in the renderer;
+   *  export:start strips the corresponding fields in main regardless. */
+  zoomAllowed: boolean
+  cursorFxAllowed: boolean
+  annotationsAllowed: boolean
+  chaptersAllowed: boolean
+  notesAllowed: boolean
+  blurAllowed: boolean
 }
 
 export interface Entitlements {
@@ -36,7 +48,13 @@ const FREE_LIMITS: EntitlementLimits = {
   maxRecordingSeconds: 300,
   audioAllowed: false,
   webcamAllowed: false,
-  transcriptAllowed: false
+  transcriptAllowed: false,
+  zoomAllowed: false,
+  cursorFxAllowed: false,
+  annotationsAllowed: false,
+  chaptersAllowed: false,
+  notesAllowed: false,
+  blurAllowed: false
 }
 
 const PRO_LIMITS: EntitlementLimits = {
@@ -44,7 +62,13 @@ const PRO_LIMITS: EntitlementLimits = {
   maxRecordingSeconds: null,
   audioAllowed: true,
   webcamAllowed: true,
-  transcriptAllowed: true
+  transcriptAllowed: true,
+  zoomAllowed: true,
+  cursorFxAllowed: true,
+  annotationsAllowed: true,
+  chaptersAllowed: true,
+  notesAllowed: true,
+  blurAllowed: true
 }
 
 export function entitlementsFor(plan: 'free' | 'pro'): Entitlements {

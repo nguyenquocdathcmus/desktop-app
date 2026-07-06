@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { useEntitlementsStore } from './useEntitlementsStore'
+import { useToastStore } from './useToastStore'
 import { immer } from 'zustand/middleware/immer'
 import type { ProjectState, BackgroundSource, ZoomEvent, CursorSettings, CursorEvent, DeviceFrame, WebcamSettings, TrimSegment, Annotation, CameraScene, Chapter, ReviewComment, BlurRegion } from '../../../shared/project-types'
 import { DEFAULT_PROJECT_STATE } from '../../../shared/project-types'
@@ -122,6 +124,17 @@ let autosaveTimer: ReturnType<typeof setTimeout> | null = null
 // dragged slider collapses into a single undo step instead of one per pixel.
 const HISTORY_DEBOUNCE_MS = 400
 const HISTORY_LIMIT = 50
+
+/** Sprint 30 follow-up — editor effects that are Pro-only. Synchronous check
+ *  against the entitlements mirror + upsell toast; main strips these from
+ *  the export payload regardless, so this is UX, not security. */
+function requirePro(flag: keyof ReturnType<typeof useEntitlementsStore.getState>['limits'], label: string): boolean {
+  const { limits } = useEntitlementsStore.getState()
+  if (limits[flag]) return true
+  useToastStore.getState().push({ kind: 'info', message: `${label} là tính năng Pro — nâng cấp trong panel Tài khoản để dùng.` })
+  return false
+}
+
 let historyTimer: ReturnType<typeof setTimeout> | null = null
 let past: ProjectState[] = []
 let future: ProjectState[] = []
@@ -348,7 +361,10 @@ export const useProjectStore = create<ProjectStore>()(
 
       // Generate zoom events
       let zoomEvents: ZoomEvent[] = []
-      if (cursorEvents.length > 2 && manifest.width > 0 && get().autoZoomEnabled) {
+      // Sprint 30 follow-up — auto zoom is Pro; skip generation silently on
+      // Free (no upsell toast on every project open).
+      const zoomEntitled = useEntitlementsStore.getState().limits.zoomAllowed
+      if (zoomEntitled && cursorEvents.length > 2 && manifest.width > 0 && get().autoZoomEnabled) {
         try {
           zoomEvents = generateZoomEvents(
             cursorEvents,
@@ -502,12 +518,15 @@ export const useProjectStore = create<ProjectStore>()(
     },
 
     // ── Annotations (Sprint 9) ────────────────────────────────────────────────
-    addAnnotation: (a) => set((s) => {
+    addAnnotation: (a) => {
+      if (!requirePro('annotationsAllowed', 'Chú thích văn bản')) return
+      set((s) => {
       if (!s.project) return
       if (!s.project.annotations) s.project.annotations = []
       s.project.annotations.push(a)
       s.isDirty = true
-    }),
+      })
+    },
 
     updateAnnotation: (id, changes) => set((s) => {
       const a = s.project?.annotations?.find((x) => x.id === id)
@@ -544,13 +563,16 @@ export const useProjectStore = create<ProjectStore>()(
     }),
 
     // ── Chapters (Sprint 15) ──────────────────────────────────────────────────
-    addChapter: (c) => set((s) => {
+    addChapter: (c) => {
+      if (!requirePro('chaptersAllowed', 'Chương (chapters)')) return
+      set((s) => {
       if (!s.project) return
       if (!s.project.chapters) s.project.chapters = []
       s.project.chapters.push(c)
       s.project.chapters.sort((a, b) => a.t - b.t)
       s.isDirty = true
-    }),
+      })
+    },
 
     updateChapter: (id, changes) => set((s) => {
       const c = s.project?.chapters?.find((x) => x.id === id)
@@ -564,13 +586,16 @@ export const useProjectStore = create<ProjectStore>()(
     }),
 
     // ── Review comments (Sprint 15) — local-only, never exported ───────────────
-    addReviewComment: (c) => set((s) => {
+    addReviewComment: (c) => {
+      if (!requirePro('notesAllowed', 'Ghi chú review')) return
+      set((s) => {
       if (!s.project) return
       if (!s.project.reviewComments) s.project.reviewComments = []
       s.project.reviewComments.push(c)
       s.project.reviewComments.sort((a, b) => a.t - b.t)
       s.isDirty = true
-    }),
+      })
+    },
 
     updateReviewComment: (id, changes) => set((s) => {
       const c = s.project?.reviewComments?.find((x) => x.id === id)
@@ -584,12 +609,15 @@ export const useProjectStore = create<ProjectStore>()(
     }),
 
     // ── Blur regions (Sprint 19) ────────────────────────────────────────────────
-    addBlurRegion: (b) => set((s) => {
+    addBlurRegion: (b) => {
+      if (!requirePro('blurAllowed', 'Làm mờ vùng nhạy cảm')) return
+      set((s) => {
       if (!s.project) return
       if (!s.project.blurRegions) s.project.blurRegions = []
       s.project.blurRegions.push(b)
       s.isDirty = true
-    }),
+      })
+    },
 
     updateBlurRegion: (id, changes) => set((s) => {
       const b = s.project?.blurRegions?.find((x) => x.id === id)
@@ -615,6 +643,7 @@ export const useProjectStore = create<ProjectStore>()(
     }),
 
     addZoomEvent: (event) => {
+      if (!requirePro('zoomAllowed', 'Zoom')) return
       set((s) => {
         if (s.project) { s.project.zoomEvents.push(event); s.isDirty = true }
       })
@@ -635,6 +664,7 @@ export const useProjectStore = create<ProjectStore>()(
     }),
 
     regenerateZoom: async () => {
+      if (!requirePro('zoomAllowed', 'Auto zoom')) return
       const { project, cursorEvents } = get()
       if (!project) return
       const { manifest } = project
