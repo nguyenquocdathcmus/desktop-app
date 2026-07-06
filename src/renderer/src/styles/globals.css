@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Sprint 27 US-209 — light theme added alongside the original dark-only
+   *  variables. `data-theme` is stamped on <html> by useThemeStore (System
+   *  resolves via prefers-color-scheme, Dark/Light are explicit user choice)
+   *  — see App.tsx. Kept as plain CSS variables (not a Tailwind dark:
+   *  variant) since that's the pattern this file already established and
+   *  most components read these vars via arbitrary-value classes
+   *  (bg-[var(--bg-secondary)]) rather than Tailwind's own dark mode. */
+  :root,
+  :root[data-theme='dark'] {
+    --bg-primary: #0f0f0f;
+    --bg-secondary: #1a1a1a;
+    --bg-tertiary: #252525;
+    --bg-hover: #2a2a2a;
+    --border: #333333;
+    --text-primary: #f0f0f0;
+    --text-secondary: #999999;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --danger: #ef4444;
+    --success: #22c55e;
+  }
+
+  :root[data-theme='light'] {
+    --bg-primary: #f5f5f7;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f0f0f2;
+    --bg-hover: #e8e8ea;
+    --border: #d8d8dc;
+    --text-primary: #1a1a1a;
+    --text-secondary: #6b6b70;
+    --accent: #6366f1;
+    --accent-hover: #4f46e5;
+    --danger: #dc2626;
+    --success: #16a34a;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root[data-theme='system'] {
+      --bg-primary: #f5f5f7;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #f0f0f2;
+      --bg-hover: #e8e8ea;
+      --border: #d8d8dc;
+      --text-primary: #1a1a1a;
+      --text-secondary: #6b6b70;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --danger: #dc2626;
+      --success: #16a34a;
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    overflow: hidden;
+  }
+
+  /* macOS traffic lights area */
+  .titlebar-drag {
+    -webkit-app-region: drag;
+  }
+  .titlebar-no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Sprint 13 US-110 — consistent keyboard focus indicator app-wide. Only shows
+     for keyboard navigation (:focus-visible), never on mouse click, so it
+     doesn't add visual noise to the mouse-first interactions everywhere. Acts
+     as the default for anything that doesn't already set its own focus-visible
+     ring (buttons/inputs/links across the app, not just the few components
+     that got an explicit ring class during the accessibility pass). */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+  }
+  .btn-primary {
+    @apply btn bg-indigo-500 text-white hover:bg-indigo-400 active:bg-indigo-600;
+  }
+  .btn-ghost {
+    @apply btn text-gray-400 hover:bg-white/5 hover:text-white;
+  }
+  .btn-danger {
+    @apply btn bg-red-500 text-white hover:bg-red-400;
+  }
+
+  .panel {
+    @apply rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] p-4;
+  }
+
+  .label {
+    @apply text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider;
+  }
+}
+
+@keyframes ripple-out {
+  0%   { transform: translate(-50%, -50%) scale(0.5); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+}

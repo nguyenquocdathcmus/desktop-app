@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-electron/
+out/
+.DS_Store
+*.local
+resources/bin/
+*.mov
+*.mp4
+*.gif
+.env.signing
+.env.auth
+*.p8
+
+# Supabase local dev — Docker volumes/state, not source
+supabase-project/supabase/.branches
+supabase-project/supabase/.temp

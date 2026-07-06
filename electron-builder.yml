@@ -1,0 +1,68 @@
+appId: com.recordscreen.app
+productName: Record Screen
+copyright: Copyright © 2026
+
+directories:
+  buildResources: build
+  output: dist
+
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig,tsconfig.*}.json'
+  - '!doc/**'
+  - '!test/**'
+  - '!sprint/**'
+  - '!swift/**'
+  - '!scripts/**'
+
+asarUnpack:
+  - resources/**
+  - '**/*.node'
+
+mac:
+  icon: build/icon.icns
+  category: public.app-category.video
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # identity auto-detected from Keychain if CSC_NAME not set
+  # notarize is handled by afterSign script (uses APPLE_API_KEY_* env vars)
+  afterSign: scripts/notarize.js
+  extendInfo:
+    NSCameraUsageDescription: Record Screen needs camera access for webcam overlay.
+    NSMicrophoneUsageDescription: Record Screen needs microphone access for audio recording.
+    NSScreenCaptureDescription: Record Screen needs screen recording access to capture your screen.
+    # Sprint 24 US-183 — the transcriber helper binary is spawned as a child
+    # process of this signed app bundle and inherits its TCC identity, the
+    # same way cursor-tracker inherits Accessibility permission (see PLAN.md
+    # "CGEventTap — Accessibility Permission"). Without this key here (on the
+    # *app* bundle, not the helper binary, which has no bundle of its own),
+    # SFSpeechRecognizer aborts the process outright per Apple's TCC enforcement.
+    NSSpeechRecognitionUsageDescription: Record Screen transcribes your recordings on-device to power the transcript editor. Audio never leaves your Mac.
+  target:
+    - target: dmg
+      arch: arm64
+    - target: dir
+      arch: arm64
+
+# Auto-update (Sprint 12, US-099) — GitHub Releases as the update source.
+# PLACEHOLDER: replace owner/repo with the real GitHub repo before shipping a
+# release build; electron-updater reads this block to know where to check.
+# Uncomment once the repo exists and releases are tagged with matching versions.
+# publish:
+#   provider: github
+#   owner: YOUR_GITHUB_ORG
+#   repo: screen-studio
+
+dmg:
+  title: Record Screen
+  icon: build/icon.icns
+  artifactName: RecordScreen-${version}-${arch}.${ext}
+  window:
+    width: 540
+    height: 380

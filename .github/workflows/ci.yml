@@ -1,0 +1,60 @@
+name: CI
+
+# Sprint 14 US-120 — the codebase had no CI at all before this: a TypeScript
+# error or a broken Exporter.ts filter could be pushed to main and nobody
+# would know until someone happened to run `tsc`/`vitest` by hand. This runs
+# on every push/PR and blocks merge on failure.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typecheck:
+    # Both are macOS-only in practice (Electron main process imports touch
+    # macOS-specific Swift binary paths at type-check time via binPath.ts),
+    # but the checks themselves are pure TypeScript — macos-latest keeps this
+    # consistent with the rest of the toolchain without extra runner cost
+    # since Xcode/Swift aren't needed here.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit -p tsconfig.node.json
+      # tsconfig.web.json checked via the real electron-vite build rather than a
+      # standalone `tsc` invocation — running tsc directly against it produces
+      # pre-existing false positives (missing `window.api` global augmentation
+      # that electron-vite's build pipeline resolves correctly; a standalone
+      # tsc pass does not). The build is the accurate signal for the renderer.
+      - run: npm run build
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  # Integration tests spawn the real bundled ffmpeg binary (macOS arm64/x86_64
+  # universal build in resources/bin/) and are the regression net for the
+  # multi-segment export bugs found during Sprint 8/9 — see
+  # test/integration/export-real-ffmpeg.test.ts. Needs macOS for the binary
+  # to actually execute.
+  integration-tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration
