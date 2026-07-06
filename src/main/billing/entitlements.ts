@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
-import { fetchSubscription } from '../ipc/billing-handlers'
+import { fetchSubscription } from './subscription'
 
 /**
  * Sprint 30 US-220 — single source of truth for what the current user is
