@@ -10,6 +10,7 @@ import type { ExportCodec, ExportQuality, ExportOptions } from '../../../../shar
 import { trackEvent } from '../../analytics'
 import { PublishPanel } from './PublishPanel'
 import { useAccountPanelStore } from '../../store/useAccountPanelStore'
+import { useEntitlementsStore } from '../../store/useEntitlementsStore'
 
 interface Props {
   open: boolean
@@ -67,6 +68,14 @@ export function ExportModal({ open, onClose }: Props) {
   // export:start handler re-checks in main, so this can't be bypassed.
   const [maxExportShortSide, setMaxExportShortSide] = useState<number | null>(null)
   const openAccountPanel = useAccountPanelStore((s) => s.openPanel)
+  const limits = useEntitlementsStore((s) => s.limits)
+  // Sprint 30 follow-up — a Free-plan export silently used to drop zoom/
+  // annotations/chapters/blur/cursor effects with zero warning: the user
+  // would only discover the missing effects after watching the finished
+  // file. Now export is blocked behind an explicit acknowledgment listing
+  // exactly what will be removed, mirroring how the 720p cap is already a
+  // hard stop rather than a silent downscale.
+  const [proEffectsAck, setProEffectsAck] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
 
   // Sprint 13 US-108 — keep Tab inside the modal, restore focus to whatever
@@ -154,6 +163,29 @@ export function ExportModal({ open, onClose }: Props) {
     if (isLong) return `Recording dài ${Math.round(duration / 60)} phút, export có thể mất vài phút.`
     return null
   }, [project, duration, res.height])
+
+  // Sprint 30 follow-up — what THIS project actually contains that the
+  // current plan won't export. Recomputed whenever the project's own
+  // content changes (not just on open) since a user can add e.g. a chapter
+  // while the modal is closed, or an entitlements refresh can land mid-session.
+  const missingProEffects = useMemo(() => {
+    if (!project) return []
+    const items: string[] = []
+    if (!limits.zoomAllowed && project.zoomEvents.length > 0) items.push(`${project.zoomEvents.length} zoom event`)
+    if (!limits.annotationsAllowed && (project.annotations?.length ?? 0) > 0) items.push(`${project.annotations!.length} chú thích`)
+    if (!limits.chaptersAllowed && (project.chapters?.length ?? 0) > 0) items.push(`${project.chapters!.length} chương`)
+    if (!limits.blurAllowed && (project.blurRegions?.length ?? 0) > 0) items.push(`${project.blurRegions!.length} vùng làm mờ`)
+    if (!limits.cursorFxAllowed && (project.cursorSettings.highlight || project.cursorSettings.clickAnimation || (project.cursorSettings.size !== undefined && project.cursorSettings.size !== 1))) items.push('hiệu ứng con trỏ')
+    return items
+  }, [project, limits])
+
+  // Reopening the modal, or the underlying content changing, both invalidate
+  // a prior acknowledgment — re-confirm rather than silently carrying it
+  // forward (e.g. user removes a chapter then adds two annotations: that's
+  // a different loss than what they agreed to).
+  useEffect(() => {
+    setProEffectsAck(false)
+  }, [open, missingProEffects.join('|')])
 
   if (!project) return null
 
@@ -584,6 +616,32 @@ export function ExportModal({ open, onClose }: Props) {
               </div>
             )}
 
+            {/* Sprint 30 follow-up — must be explicitly acknowledged before
+                Export is enabled; see missingProEffects/proEffectsAck above
+                for why this can't just be a dismissible notice. */}
+            {missingProEffects.length > 0 && !proEffectsAck && progress === null && !done && (
+              <div className="mb-4 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5">
+                <p className="text-xs text-indigo-300">
+                  🔒 Video này có <strong>{missingProEffects.join(', ')}</strong> — đây là tính năng Pro nên sẽ{' '}
+                  <strong>không xuất hiện</strong> trong video xuất ra ở gói Free.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => setProEffectsAck(true)}
+                    className="text-[11px] font-medium px-2.5 py-1 rounded-md bg-[var(--bg-tertiary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors"
+                  >
+                    Xuất không có hiệu ứng đó
+                  </button>
+                  <button
+                    onClick={openAccountPanel}
+                    className="text-[11px] font-medium px-2.5 py-1 rounded-md bg-indigo-500 hover:bg-indigo-400 text-white transition-colors"
+                  >
+                    Nâng cấp lên Pro
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Progress / done / error */}
             {progress !== null && (
               <div className="mb-4">
@@ -659,7 +717,8 @@ export function ExportModal({ open, onClose }: Props) {
               <button onClick={onClose} className="btn-ghost">{t('exportModal.cancel')}</button>
               <button
                 onClick={handleExport}
-                disabled={progress !== null}
+                disabled={progress !== null || (missingProEffects.length > 0 && !proEffectsAck)}
+                title={missingProEffects.length > 0 && !proEffectsAck ? 'Xác nhận ở trên trước khi xuất' : undefined}
                 className="btn-primary disabled:opacity-50"
               >
                 {progress !== null ? t('exportModal.exporting') : `Export ${format.toUpperCase()}`}
