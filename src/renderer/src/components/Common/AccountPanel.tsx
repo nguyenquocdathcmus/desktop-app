@@ -20,10 +20,16 @@ export function AccountPanel() {
   const [billingBusy, setBillingBusy] = useState(false)
   const [billingError, setBillingError] = useState<string | null>(null)
 
+  // Refetch on every panel open, not just on sign-in state changes: the
+  // component stays mounted while hidden, so without `open` in the deps the
+  // subscription shown is a snapshot from sign-in time — a user who upgrades
+  // (payment completes in the browser, webhook updates Supabase) and reopens
+  // this panel would still see their pre-payment plan until app restart.
   useEffect(() => {
+    if (!open) return
     if (status.state !== 'signedIn') { setSubscription(null); return }
     window.api.getSubscriptionStatus().then(setSubscription).catch(() => {})
-  }, [status.state])
+  }, [open, status.state])
 
   useEffect(() => {
     if (!open) return
