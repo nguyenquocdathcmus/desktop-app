@@ -38,6 +38,17 @@ export function AccountPanel() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, closePanel])
 
+  // Sprint 30 US-223 — after checkout opens in the browser, poll until the
+  // Paddle webhook lands in Supabase so the panel flips to Pro on its own —
+  // no closing/reopening required. Bounded (3 min) so an abandoned checkout
+  // doesn't poll forever. Hooks must live ABOVE the `if (!open) return null`
+  // early return — this component renders with 0 hooks-after-return when
+  // hidden, so any hook below it violates the Rules of Hooks on open.
+  const upgradePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => () => {
+    if (upgradePollRef.current) clearInterval(upgradePollRef.current)
+  }, [])
+
   if (!open) return null
 
   function handleSubmit(e: React.FormEvent) {
@@ -46,15 +57,6 @@ export function AccountPanel() {
     if (mode === 'signIn') signIn(email, password)
     else signUp(email, password)
   }
-
-  // Sprint 30 US-223 — after checkout opens in the browser, poll until the
-  // Paddle webhook lands in Supabase so the panel flips to Pro on its own —
-  // no closing/reopening required. Bounded (3 min) so an abandoned checkout
-  // doesn't poll forever.
-  const upgradePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  useEffect(() => () => {
-    if (upgradePollRef.current) clearInterval(upgradePollRef.current)
-  }, [])
 
   async function handleUpgrade() {
     setBillingBusy(true)
