@@ -13,6 +13,7 @@ import {
   requestScreenRecordingPermission
 } from '../permissions'
 import type { StartOptions, DisplayInfo, WindowInfo } from '../../shared/ipc-types'
+import { getEntitlements } from '../billing/entitlements'
 
 // Broadcast recording status to ALL windows (Editor + Controls share same event)
 function broadcastStatus() {
@@ -29,6 +30,36 @@ function getEditorWindow(): BrowserWindow | undefined {
     const url = w.webContents.getURL()
     return !url.includes('#controls') && !url.includes('#webcam')
   })
+}
+
+// Sprint 30 US-220 — Free-plan recordings auto-stop at the pricing page's
+// promised 5-minute cap. A 5s poll (not one long setTimeout) because pauses
+// stretch the wall-clock deadline — elapsed must be recomputed from the
+// session's own pausedElapsedMs bookkeeping each tick.
+let limitWatcher: ReturnType<typeof setInterval> | null = null
+
+function clearLimitWatcher(): void {
+  if (limitWatcher) { clearInterval(limitWatcher); limitWatcher = null }
+}
+
+function startLimitWatcher(maxSeconds: number, stopFn: () => Promise<unknown>): void {
+  clearLimitWatcher()
+  limitWatcher = setInterval(() => {
+    const status = session.status
+    if (status.state !== 'recording' && status.state !== 'paused') {
+      clearLimitWatcher()
+      return
+    }
+    if (status.state !== 'recording') return // paused — clock frozen
+    const elapsedMs = Date.now() - status.startedAt - status.pausedElapsedMs
+    if (elapsedMs >= maxSeconds * 1000) {
+      clearLimitWatcher()
+      BrowserWindow.getAllWindows().forEach((w) => {
+        if (!w.isDestroyed()) w.webContents.send('recording:limit-reached', { maxSeconds })
+      })
+      stopFn().catch((e) => console.error('[limit] auto-stop failed:', e))
+    }
+  }, 5_000)
 }
 
 export function registerRecordingHandlers(ipcMain: IpcMain): void {
@@ -132,6 +163,14 @@ export function registerRecordingHandlers(ipcMain: IpcMain): void {
     // so always request microphone permission up front rather than gating on captureAudio.
     await requestMicrophonePermission()
 
+    // Sprint 30 US-220 — Free plan records video-only (pricing: webcam &
+    // audio are Pro). Stripped HERE, not in the renderer, so a modified
+    // renderer sending webcamEnabled/captureAudio anyway changes nothing.
+    // The renderer draws its own locks from billing:get-entitlements.
+    const ent = await getEntitlements()
+    if (!ent.limits.audioAllowed) opts = { ...opts, captureAudio: false }
+    if (!ent.limits.webcamAllowed) opts = { ...opts, webcamEnabled: false }
+
     if (opts.webcamEnabled) await requestCameraPermission()
 
     const hasAccessibility = await requestAccessibilityPermission()
@@ -142,10 +181,17 @@ export function registerRecordingHandlers(ipcMain: IpcMain): void {
     // Synthetic cursor (Sprint 10): only hide the system cursor from the capture
     // when cursor tracking will actually work — otherwise the video would have
     // no cursor at all and nothing to redraw it from.
-    return session.start({ ...opts, hideCursor: hasAccessibility })
+    const result = await session.start({ ...opts, hideCursor: hasAccessibility })
+    if (result.ok && ent.limits.maxRecordingSeconds !== null) {
+      startLimitWatcher(ent.limits.maxRecordingSeconds, stopRecordingAndOpenEditor)
+    }
+    return result
   })
 
-  ipcMain.handle(IPC.RECORDING_STOP, async () => {
+  /** Shared by the manual RECORDING_STOP handler and the Free-plan
+   *  auto-stop watcher — identical post-stop flow either way. */
+  async function stopRecordingAndOpenEditor() {
+    clearLimitWatcher()
     const result = await session.stop()
 
     if (result.ok) {
@@ -173,7 +219,9 @@ export function registerRecordingHandlers(ipcMain: IpcMain): void {
     }
 
     return result
-  })
+  }
+
+  ipcMain.handle(IPC.RECORDING_STOP, () => stopRecordingAndOpenEditor())
 
   ipcMain.handle(IPC.RECORDING_PAUSE, () => session.pause())
   ipcMain.handle(IPC.RECORDING_RESUME, () => session.resume())
@@ -184,6 +232,11 @@ export function registerRecordingHandlers(ipcMain: IpcMain): void {
   // leadMs is how much earlier the mic MediaRecorder started vs. the Swift capture
   // binary — trimmed off during mux so mic doesn't drift ahead of video.
   ipcMain.handle('recording:save-mic-audio', async (_, data: Uint8Array, leadMs: number) => {
+    // Sprint 30 US-220 — the mic track is recorded by the RENDERER's own
+    // MediaRecorder, so stripping captureAudio at start doesn't cover it;
+    // dropping the sidecar here is what actually keeps Free recordings silent.
+    const ent = await getEntitlements()
+    if (!ent.limits.audioAllowed) return
     try {
       session.saveMicAudio(Buffer.from(data), leadMs)
     } catch (e) {
@@ -193,6 +246,8 @@ export function registerRecordingHandlers(ipcMain: IpcMain): void {
 
   // Save webcam video blob from the webcam window → disk (recorded in lockstep with capture)
   ipcMain.handle('recording:save-webcam-video', async (_, data: Uint8Array) => {
+    const ent = await getEntitlements()
+    if (!ent.limits.webcamAllowed) return
     try {
       session.saveWebcamVideo(Buffer.from(data))
     } catch (e) {

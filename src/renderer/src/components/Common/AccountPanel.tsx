@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useAccountPanelStore } from '../../store/useAccountPanelStore'
 import type { SubscriptionInfo } from '../../../../main/ipc/billing-handlers'
@@ -47,11 +47,34 @@ export function AccountPanel() {
     else signUp(email, password)
   }
 
+  // Sprint 30 US-223 — after checkout opens in the browser, poll until the
+  // Paddle webhook lands in Supabase so the panel flips to Pro on its own —
+  // no closing/reopening required. Bounded (3 min) so an abandoned checkout
+  // doesn't poll forever.
+  const upgradePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => () => {
+    if (upgradePollRef.current) clearInterval(upgradePollRef.current)
+  }, [])
+
   async function handleUpgrade() {
     setBillingBusy(true)
     setBillingError(null)
     const result = await window.api.createCheckoutUrl()
     if (!result.ok) setBillingError(result.error)
+    else {
+      if (upgradePollRef.current) clearInterval(upgradePollRef.current)
+      let attempts = 0
+      upgradePollRef.current = setInterval(async () => {
+        attempts++
+        const sub = await window.api.getSubscriptionStatus().catch(() => null)
+        const isPro = !!sub && sub.signedIn && 'plan' in sub && sub.plan === 'pro'
+        if (isPro && sub) setSubscription(sub)
+        if ((isPro || attempts >= 36) && upgradePollRef.current) {
+          clearInterval(upgradePollRef.current)
+          upgradePollRef.current = null
+        }
+      }, 5_000)
+    }
     setBillingBusy(false)
   }
 

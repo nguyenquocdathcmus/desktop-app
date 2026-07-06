@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useRecordingStore } from '../../store/useRecordingStore'
 import { useToastStore } from '../../store/useToastStore'
+import { useRecordingStore } from '../../store/useRecordingStore'
 import { useT } from '../../hooks/useT'
 import { DisplayLayoutPicker } from './DisplayLayoutPicker'
 
@@ -329,10 +329,37 @@ export function RecordingControls() {
   // devices etc.; collapses back to the pill automatically once they start
   // a new countdown or explicitly collapse it again.
   const [pillExpanded, setPillExpanded] = useState(false)
+  // Sprint 30 US-220 — Free plan can't record webcam/audio and caps at 5 min.
+  // null while loading = draw nothing locked (avoids a lock flash for Pro).
+  // Display-only: main strips the options and drops the sidecars regardless.
+  const [maxRecordingSeconds, setMaxRecordingSeconds] = useState<number | null>(null)
+  const [mediaLocked, setMediaLocked] = useState(false)
+  const pushToast = useToastStore((s) => s.push)
 
   useEffect(() => {
     fetchDisplays()
     fetchMediaDevices()
+  }, [])
+
+  useEffect(() => {
+    let stale = false
+    window.api.getEntitlements().then((ent) => {
+      if (stale) return
+      setMaxRecordingSeconds(ent.limits.maxRecordingSeconds)
+      setMediaLocked(!ent.limits.webcamAllowed)
+      if (!ent.limits.webcamAllowed) {
+        // A previous Pro session may have left these on in the store.
+        setWebcamEnabled(false)
+        setMicEnabled(false)
+      }
+    }).catch(() => {})
+    const unsubscribe = window.api.onRecordingLimitReached(({ maxSeconds }) => {
+      pushToast({
+        kind: 'info',
+        message: `Recording stopped at the Free plan's ${Math.round(maxSeconds / 60)}-minute limit. Upgrade to Pro for unlimited length.`
+      })
+    })
+    return () => { stale = true; unsubscribe() }
   }, [])
 
   // Fetch windows when switching to window mode
@@ -673,15 +700,21 @@ export function RecordingControls() {
         )}
 
         {/* ── Camera + Mic row ── */}
+        {mediaLocked && (
+          <p className="text-[10px] text-[#8a8a8e] -mb-1 shrink-0">
+            🔒 Webcam & audio recording is a Pro feature — Free records video only, up to {Math.round((maxRecordingSeconds ?? 300) / 60)} min.
+          </p>
+        )}
         <div className="flex gap-2 shrink-0">
           {/* Webcam toggle */}
           <div className="relative flex-1">
             <button
+              disabled={mediaLocked}
               onClick={(e) => { e.stopPropagation(); setShowCamMenu(!showCamMenu) }}
               aria-haspopup="menu"
               aria-expanded={showCamMenu}
               aria-label={`Camera: ${webcamEnabled ? 'on' : 'off'}. Choose device`}
-              className={`w-full flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              className={`w-full flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed ${
                 webcamEnabled
                   ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400'
                   : 'border-white/[0.06] bg-white/[0.03] text-[#8a8a8e] hover:border-white/[0.12]'
@@ -738,11 +771,12 @@ export function RecordingControls() {
           {/* Mic toggle */}
           <div className="relative flex-1">
             <button
+              disabled={mediaLocked}
               onClick={(e) => { e.stopPropagation(); setShowMicMenu(!showMicMenu) }}
               aria-haspopup="menu"
               aria-expanded={showMicMenu}
               aria-label={`Microphone: ${micEnabled ? 'on' : 'off'}. Choose device`}
-              className={`w-full flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              className={`w-full flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed ${
                 micEnabled
                   ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
                   : 'border-white/[0.06] bg-white/[0.03] text-[#8a8a8e] hover:border-white/[0.12]'

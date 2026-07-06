@@ -15,6 +15,7 @@ import type { RecordingMeta } from '../main/ipc/recordings-list-handler'
 import type { LocaleCode } from '../shared/locales'
 import type { AuthStatus } from '../main/auth/AuthService'
 import type { SubscriptionInfo } from '../main/ipc/billing-handlers'
+import type { Entitlements } from '../main/billing/entitlements'
 
 // Expose typed API to renderer via contextBridge
 // renderer accesses via window.api.*
@@ -55,6 +56,14 @@ const api = {
     const handler = () => cb()
     ipcRenderer.on('recording:toggle-requested', handler)
     return () => ipcRenderer.removeListener('recording:toggle-requested', handler)
+  },
+
+  // Sprint 30 US-220 — fired just before a Free-plan recording is auto-stopped
+  // at the 5-minute cap, so the UI can explain why recording ended.
+  onRecordingLimitReached: (cb: (payload: { maxSeconds: number }) => void) => {
+    const handler = (_: unknown, payload: { maxSeconds: number }) => cb(payload)
+    ipcRenderer.on('recording:limit-reached', handler)
+    return () => ipcRenderer.removeListener('recording:limit-reached', handler)
   },
 
   getRecordingShortcut: (): Promise<string | null> => ipcRenderer.invoke('recording:get-shortcut'),
@@ -187,6 +196,8 @@ const api = {
     ipcRenderer.invoke('billing:create-checkout-url'),
   openBillingPortal: (): Promise<{ ok: true; url: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke('billing:open-portal'),
+  // Sprint 30 US-220 — plan + limits for drawing locks; enforcement is in main.
+  getEntitlements: (): Promise<Entitlements> => ipcRenderer.invoke('billing:get-entitlements'),
 
   // --- Recordings list ---
   // Sprint 27 US-203 — paginated; omit opts to get everything in one call

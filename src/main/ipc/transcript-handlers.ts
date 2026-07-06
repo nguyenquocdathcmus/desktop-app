@@ -3,6 +3,7 @@ import { spawn } from 'child_process'
 import { existsSync, statSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { binPath } from '../binPath'
+import { getEntitlements } from '../billing/entitlements'
 
 export interface TranscriptWord {
   word: string
@@ -38,6 +39,12 @@ export function registerTranscriptHandlers(ipcMain: IpcMain): void {
       { ok: true; words: TranscriptWord[] } | { ok: false; error: string }
     > => {
       if (!audioPath || !existsSync(audioPath)) return { ok: false, error: 'Audio file not found' }
+
+      // Sprint 30 US-220 — on-device transcript is a Pro feature (pricing pro4).
+      const ent = await getEntitlements()
+      if (!ent.limits.transcriptAllowed) {
+        return { ok: false, error: 'Transcript là tính năng Pro — nâng cấp trong panel Tài khoản để dùng.' }
+      }
 
       const cache = cacheFile(audioPath)
       const stat = statSync(audioPath)

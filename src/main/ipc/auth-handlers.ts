@@ -1,5 +1,6 @@
 import { IpcMain, BrowserWindow } from 'electron'
 import { authService, type AuthStatus } from '../auth/AuthService'
+import { invalidateEntitlements } from '../billing/entitlements'
 
 /** Sprint 28 US-212/214 — auth IPC surface. All Supabase calls happen in
  *  AuthService (main process); renderer only ever sees AuthStatus, mirroring
@@ -29,6 +30,9 @@ export function registerAuthHandlers(ipcMain: IpcMain, getEditorWindow: () => Br
   })
 
   authService.onStatusChange((status) => {
+    // Sprint 30 US-220 — plan follows the signed-in user; don't let a Pro
+    // user's cached entitlements survive into the next (or no) session.
+    invalidateEntitlements()
     getEditorWindow()?.webContents.send('auth:status-changed', status)
   })
 }

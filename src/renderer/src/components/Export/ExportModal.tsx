@@ -9,6 +9,7 @@ import { useT } from '../../hooks/useT'
 import type { ExportCodec, ExportQuality, ExportOptions } from '../../../../shared/ipc-types'
 import { trackEvent } from '../../analytics'
 import { PublishPanel } from './PublishPanel'
+import { useAccountPanelStore } from '../../store/useAccountPanelStore'
 
 interface Props {
   open: boolean
@@ -62,6 +63,10 @@ export function ExportModal({ open, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [perfWarningDismissed, setPerfWarningDismissed] = useState(false)
+  // Sprint 30 US-220 — Free plan caps exports at 720p. UI-only lock; the
+  // export:start handler re-checks in main, so this can't be bypassed.
+  const [maxExportShortSide, setMaxExportShortSide] = useState<number | null>(null)
+  const openAccountPanel = useAccountPanelStore((s) => s.openPanel)
   const modalRef = useRef<HTMLDivElement>(null)
 
   // Sprint 13 US-108 — keep Tab inside the modal, restore focus to whatever
@@ -84,6 +89,9 @@ export function ExportModal({ open, onClose }: Props) {
       // started (or started but never completed) shows up as a drop-off
       // between this event and export_started/export_completed.
       trackEvent('export_modal_opened')
+      window.api.getEntitlements()
+        .then((ent) => setMaxExportShortSide(ent.limits.maxExportShortSide))
+        .catch(() => setMaxExportShortSide(null))
     }
   }, [open])
 
@@ -115,6 +123,21 @@ export function ExportModal({ open, onClose }: Props) {
     })
     return () => { unsubProgress(); unsubDone(); unsubError() }
   }, [open])
+
+  // If the loaded plan locks the currently selected resolution (default is
+  // 1080p), snap down to the best allowed one instead of exporting to a
+  // guaranteed rejection from main.
+  useEffect(() => {
+    if (maxExportShortSide === null) return
+    const r = EXPORT_RESOLUTIONS[resIdx]
+    if (Math.min(r.width, r.height) > maxExportShortSide) {
+      let best = 0
+      EXPORT_RESOLUTIONS.forEach((cand, i) => {
+        if (Math.min(cand.width, cand.height) <= maxExportShortSide) best = i
+      })
+      setResIdx(best)
+    }
+  }, [maxExportShortSide, resIdx])
 
   const res = EXPORT_RESOLUTIONS[resIdx]
 
@@ -429,16 +452,20 @@ export function ExportModal({ open, onClose }: Props) {
             <div className="mb-4">
               <p className="label mb-2">Resolution</p>
               <div className="grid grid-cols-2 gap-1.5">
-                {EXPORT_RESOLUTIONS.map((r, i) => (
-                  <button
-                    key={r.label}
-                    onClick={() => setResIdx(i)}
-                    className={`rounded-lg px-3 py-2 text-xs text-left transition-colors border ${resIdx === i ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300' : 'border-[var(--border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:border-[var(--border)]'}`}
-                  >
-                    <span className="font-medium">{r.label}</span>
-                    <span className="block opacity-60">{r.width}×{r.height}</span>
-                  </button>
-                ))}
+                {EXPORT_RESOLUTIONS.map((r, i) => {
+                  const locked = maxExportShortSide !== null && Math.min(r.width, r.height) > maxExportShortSide
+                  return (
+                    <button
+                      key={r.label}
+                      onClick={() => { if (locked) openAccountPanel(); else setResIdx(i) }}
+                      title={locked ? 'Pro feature — upgrade to export above 720p' : undefined}
+                      className={`rounded-lg px-3 py-2 text-xs text-left transition-colors border ${resIdx === i ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300' : locked ? 'border-[var(--border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] opacity-50' : 'border-[var(--border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:border-[var(--border)]'}`}
+                    >
+                      <span className="font-medium">{r.label}{locked ? ' 🔒 Pro' : ''}</span>
+                      <span className="block opacity-60">{r.width}×{r.height}</span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 

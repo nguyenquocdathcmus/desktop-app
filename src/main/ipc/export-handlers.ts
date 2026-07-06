@@ -1,6 +1,7 @@
 import { IpcMain, BrowserWindow } from 'electron'
 import { IPC } from '../../shared/constants'
 import { exportVideo, exportGif, cancelExport } from '../export/Exporter'
+import { getEntitlements } from '../billing/entitlements'
 import type { ExportOptions } from '../../shared/ipc-types'
 
 let exporting = false
@@ -8,6 +9,16 @@ let exporting = false
 export function registerExportHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(IPC.EXPORT_START, async (_, opts: ExportOptions) => {
     if (exporting) return { ok: false, error: 'Export already in progress' }
+
+    // Sprint 30 US-220 — Free plan exports cap at 720p (pricing promise).
+    // min(width,height) so a 9:16 vertical 1080×1920 counts as 1080p, not
+    // as a 1920p that would sneak past a height-only check.
+    const ent = await getEntitlements()
+    const shortSide = Math.min(opts.resolution.width, opts.resolution.height)
+    if (shortSide > ent.limits.maxExportShortSide) {
+      return { ok: false, error: 'Xuất trên 720p là tính năng Pro — nâng cấp trong panel Tài khoản để mở khóa đến 4K 60fps.' }
+    }
+
     exporting = true
 
     const broadcast = (channel: string, payload: unknown) => {
